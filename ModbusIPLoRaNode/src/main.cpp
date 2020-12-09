@@ -2,11 +2,24 @@
 #include <RHMesh.h>
 #include <RH_RF95.h>
 
- /*************************************
-             DEFINITIONS
- *************************************/
+/*************************************
+            DEFINITIONS
+*************************************/
 
 #define BAUD 115200
+
+/*************************************
+        FUNCTION DECLARATIONS
+*************************************/
+int checkMessageType(uint8_t firstByte);
+int readCoilStatus();
+int readHoldingRegisters();
+int readInternalRegisters();
+int writeSingleCoil();
+int writeSingleRegister();
+int writeMultipleCoils();
+int writeMultipleRegisters();
+int returnBadRequest();
 
 
 /*************************************
@@ -72,10 +85,10 @@ manager.setTimeout(3000); // set timeout for manager (needed for low bandwidth m
 
 }
 
-// Reply message replace 'X' with the node number
-uint8_t data[] = "2";
+// Reply message variable
+uint8_t data[RH_MESH_MAX_MESSAGE_LEN] = {'\0'};
 // Buffer for incoming message
-uint8_t buf[RH_MESH_MAX_MESSAGE_LEN];
+uint8_t buf[RH_MESH_MAX_MESSAGE_LEN] = {'\0'};
 
 
 void loop()
@@ -84,14 +97,90 @@ void loop()
   uint8_t from;
   if (manager.recvfromAck(buf, &len, &from))
   {
+
     // Print incomming message when it arrives
     Serial.print("0x");
     Serial.print(from, HEX);
     Serial.print(": ");
     Serial.println((char*)buf);
+
+    checkMessageType(buf[0]);
  
     // Send a reply back to the originator client
     if (manager.sendtoWait(data, sizeof(data), from) != RH_ROUTER_ERROR_NONE)
     Serial.println("sendtoWait failed");
   }
 }
+
+
+int checkMessageType(uint8_t firstByte){
+  switch (firstByte)
+  {
+  case 1:
+    readCoilStatus();
+    break;
+  case 3:
+    readHoldingRegisters();
+    break;
+  case 4:
+    readInternalRegisters();
+    break;
+  case 5:
+    writeSingleCoil();
+    break;
+  case 6:
+    writeSingleRegister();
+    break;
+  case 15:
+    writeMultipleCoils();
+    break;
+  case 16:
+    writeMultipleRegisters();
+    break;
+  default:
+    returnBadRequest();
+    break;
+  }
+  return 0;
+}
+
+int readCoilStatus()
+{
+  return 0;
+}
+
+int readHoldingRegisters()
+{
+  return 0;
+}
+
+int readInternalRegisters()
+{
+  return 0;
+}
+
+int writeSingleCoil()
+{
+  return 0;
+}
+
+int writeSingleRegister()
+{
+  return 0;
+}
+
+int writeMultipleCoils()
+{
+  return 0;
+}
+
+int writeMultipleRegisters()
+{
+  return 0;
+}
+
+int returnBadRequest()
+{
+  return 0;
+}
+
