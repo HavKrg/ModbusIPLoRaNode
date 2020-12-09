@@ -2,6 +2,8 @@
 #include <RHMesh.h>
 #include <RH_RF95.h>
 
+
+
 /*************************************
             DEFINITIONS
 *************************************/
@@ -35,10 +37,12 @@ int returnBadRequest();
 
 
 /*************************************
-            LORA Settings
+            LORA SETTINGS
 *************************************/
 RH_RF95 rf95(SS, DI0);    // LORA RADIO
 RHMesh manager(rf95, 1);  // MESH MANAGER
+
+
 
 
 
@@ -117,70 +121,85 @@ int checkMessageType(uint8_t firstByte){
   switch (firstByte)
   {
   case 1:
-    readCoilStatus();
-    break;
+    return readCoilStatus();
   case 3:
-    readHoldingRegisters();
-    break;
+    return readHoldingRegisters();
   case 4:
-    readInternalRegisters();
-    break;
+    return readInternalRegisters();
   case 5:
-    writeSingleCoil();
-    break;
+    return writeSingleCoil();
   case 6:
-    writeSingleRegister();
-    break;
+    return writeSingleRegister();
   case 15:
-    writeMultipleCoils();
-    break;
+    return writeMultipleCoils();
   case 16:
-    writeMultipleRegisters();
-    break;
+    return writeMultipleRegisters();
   default:
-    returnBadRequest();
-    break;
+    return returnBadRequest();
   }
-  return 0;
+  return 1;
 }
 
 int readCoilStatus()
 {
+  // Incoming message should look like this: "1#{coilAddress}"
+  int coilAddress = 0;
+
   return 0;
 }
 
 int readHoldingRegisters()
 {
+  // Incoming message should look like this: "3#{holdingRegisterAddress}"
+  int holdingRegisterAddress = 0;
   return 0;
 }
 
 int readInternalRegisters()
 {
+  // Incoming message should look like this: "4#{internalRegisterAddress}"
+  int internalRegisterAddress = 0;
   return 0;
 }
 
 int writeSingleCoil()
 {
+  // Incoming message should look like this: "5#{coilAddress}#{coilData}"
+  int coilAddress = 0;
+  int coilData = 0;
   return 0;
 }
 
 int writeSingleRegister()
 {
+  // Incoming message should look like this: "6#{registerAddress}#{registerData}"
+  int registerAddress = 0;
+  int registerData = 0;
   return 0;
 }
 
 int writeMultipleCoils()
 {
+  // Incoming message should look like this: "15#{startAddress}#{numberOfCoils}#{coilData1},{coilData2}...,{coilDataN}"
+  int startAddress = 0;
+  int numberOfCoils = 0;
+  int coilData[numberOfCoils];
   return 0;
 }
 
 int writeMultipleRegisters()
 {
+  // Incoming message should look like this: "16#{startAddress}#{numberOfRegisters}#{registerData1},{registerData2}...,{registerDataN}"
+  int startAddress = 0;
+  int numberOfRegisters = 0;
+  int registerData[numberOfRegisters];
   return 0;
 }
 
 int returnBadRequest()
 {
+  
+
   return 0;
 }
 
