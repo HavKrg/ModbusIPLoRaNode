@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <RHMesh.h>
 #include <RH_RF95.h>
+#include <WiFi.h>
 
 
 
@@ -8,7 +9,7 @@
             DEFINITIONS
 *************************************/
 
-#define BAUD 115200
+#define BAUD 9600
 
 /*************************************
         FUNCTION DECLARATIONS
@@ -42,6 +43,17 @@ int returnBadRequest();
 RH_RF95 rf95(SS, DI0);    // LORA RADIO
 RHMesh manager(rf95, 1);  // MESH MANAGER
 
+/*************************************
+          WIFI SETTINGS
+*************************************/
+byte myMAC[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
+IPAddress myIP(10, 0, 0, 199);
+IPAddress myDNS(10, 0, 0, 1);
+IPAddress myGateway(10, 0, 0, 1);
+char SSID[] = "ASUS";
+char PASSWORD[] = "All3Fugl3r";
+
+
 
 
 
@@ -64,13 +76,26 @@ void setup() {
   else{
     Serial.println("RF95 init complete");
   }
-
+  // Initialize LoRa Mesh manager
   if(!manager.init()){
     Serial.println("LoRa Mesh manager init failed");
   }
   else{
     Serial.println("LoRa Mesh manager init complete");
   }
+
+  // Initialize WiFi
+  WiFi.begin(SSID, PASSWORD);
+  Serial.print("Connecting to WiFi");
+  while(WiFi.status() != WL_CONNECTED){
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+  Serial.println("WiFi connected");
+  Serial.print("IP address : ");
+  Serial.println(WiFi.localIP());
+
   
 /*************************************
             Radio configuration
