@@ -2,6 +2,7 @@
 #include <RHMesh.h>
 #include <RH_RF95.h>
 #include <WiFi.h>
+#include <ModbusIP_ESP8266.h>
 
 
 
@@ -10,19 +11,28 @@
 *************************************/
 
 #define BAUD 9600
+#define DEBUG 1
+#define sizeOfIPBuffer 15
+#define sizeOfFunctionTypeBuffer 5
+#define sizeOfDataBuffer 100
+#define sizeOfParsedIP 4
 
 /*************************************
         FUNCTION DECLARATIONS
 *************************************/
-int checkMessageType(uint8_t firstByte);
-int readCoilStatus();
-int readHoldingRegisters();
-int readInternalRegisters();
-int writeSingleCoil();
-int writeSingleRegister();
-int writeMultipleCoils();
-int writeMultipleRegisters();
+int checkMessageType();
+int readCoilStatus(IPAddress modbusServer);
+int readHoldingRegisters(IPAddress modbusServer);
+int readInternalRegisters(IPAddress modbusServer);
+int writeSingleCoil(IPAddress modbusServer);
+int writeSingleRegister(IPAddress modbusServer);
+int writeMultipleCoils(IPAddress modbusServer);
+int writeMultipleRegisters(IPAddress modbusServer);
 int returnBadRequest();
+int parseFunctionType();
+int parseIPAddress();
+int parseIncomingData();
+int resetBuffers();
 
 
 /*************************************
@@ -53,9 +63,10 @@ IPAddress myGateway(10, 0, 0, 1);
 char SSID[] = "ASUS";
 char PASSWORD[] = "All3Fugl3r";
 
-
-
-
+/*************************************
+          MODBUS SETTINGS
+*************************************/
+ModbusIP mb;
 
 
 
@@ -96,17 +107,17 @@ void setup() {
   Serial.print("IP address : ");
   Serial.println(WiFi.localIP());
 
-  
+
 /*************************************
             Radio configuration
 *************************************/
-rf95.setModemConfig(RH_RF95::Bw125Cr45Sf128); // Bw = 125 kHz, Cr = 4/5, Sf = 128chips/symbol, CRC on. Default medium range. 
-// rf95.setModemConfig(RH_RF95::Bw500Cr45Sf128); // Bw = 500 kHz, Cr = 4/5, Sf = 128chips/symbol, CRC on. Fast+short range. 
-// rf95.setModemConfig(RH_RF95::Bw31_25Cr48Sf512); // Bw = 31.25 kHz, Cr = 4/8, Sf = 512chips/symbol, CRC on. Slow+long range. 
-// rf95.setModemConfig(RH_RF95::Bw125Cr48Sf4096); // Bw = 125 kHz, Cr = 4/8, Sf = 4096chips/symbol, low data rate, CRC on. Slow+long range. 
-// rf95.setModemConfig(RH_RF95::Bw125Cr45Sf2048); // Bw = 125 kHz, Cr = 4/5, Sf = 2048chips/symbol, CRC on. Slow+long range. 
+rf95.setModemConfig(RH_RF95::Bw125Cr45Sf128); // Bw = 125 kHz, Cr = 4/5, Sf = 128chips/symbol, CRC on. Default medium range.
+// rf95.setModemConfig(RH_RF95::Bw500Cr45Sf128); // Bw = 500 kHz, Cr = 4/5, Sf = 128chips/symbol, CRC on. Fast+short range.
+// rf95.setModemConfig(RH_RF95::Bw31_25Cr48Sf512); // Bw = 31.25 kHz, Cr = 4/8, Sf = 512chips/symbol, CRC on. Slow+long range.
+// rf95.setModemConfig(RH_RF95::Bw125Cr48Sf4096); // Bw = 125 kHz, Cr = 4/8, Sf = 4096chips/symbol, low data rate, CRC on. Slow+long range.
+// rf95.setModemConfig(RH_RF95::Bw125Cr45Sf2048); // Bw = 125 kHz, Cr = 4/5, Sf = 2048chips/symbol, CRC on. Slow+long range.
 
-rf95.setFrequency(BAND); // Sets the transmitter and receiver centre frequency. 
+rf95.setFrequency(BAND); // Sets the transmitter and receiver centre frequency.
 
 rf95.setTxPower(13, false); // Sets the transmitter power output level, and configures the transmitter pin.
 
@@ -117,77 +128,151 @@ manager.setTimeout(3000); // set timeout for manager (needed for low bandwidth m
 // Reply message variable
 uint8_t data[RH_MESH_MAX_MESSAGE_LEN] = {'\0'};
 // Buffer for incoming message
-uint8_t buf[RH_MESH_MAX_MESSAGE_LEN] = {'\0'};
+//uint8_t buf[RH_MESH_MAX_MESSAGE_LEN] = {'\0'};
+//uint8_t buf[] = {uint8_t(1), uint8_t(10), uint8_t(0), uint8_t(0), uint8_t(180), uint8_t('#'), uint8_t(3)};
+uint8_t buf[] = "#H#10,0,0,180#3";
 
+char IPBuffer[sizeOfIPBuffer];
+char functionTypeBuffer[sizeOfFunctionTypeBuffer];
+char dataBuffer[sizeOfDataBuffer];
+int parsedIP[sizeOfParsedIP];
+
+char *ptr;
 
 void loop()
 {
-  uint8_t len = sizeof(buf);
-  uint8_t from;
-  if (manager.recvfromAck(buf, &len, &from))
+  // uint8_t len = sizeof(buf);
+  // uint8_t from;
+  // if (manager.recvfromAck(buf, &len, &from))
+  // {
+
+  //   // Print incomming message when it arrives
+  //   Serial.print("0x");
+  //   Serial.print(from, HEX);
+  //   Serial.print(": ");
+  //   Serial.println((char*)buf);
+
+  //   checkMessageType(buf[0]);
+
+  //   // Send a reply back to the originator client
+  //   if (manager.sendtoWait(data, sizeof(data), from) != RH_ROUTER_ERROR_NONE)
+  //   Serial.println("sendtoWait failed");
+  // }
+  delay(5000);
+
+  resetBuffers();
+
+  parseIncomingData();
+  
+  
+  if(DEBUG)
   {
-
-    // Print incomming message when it arrives
-    Serial.print("0x");
-    Serial.print(from, HEX);
-    Serial.print(": ");
-    Serial.println((char*)buf);
-
-    checkMessageType(buf[0]);
- 
-    // Send a reply back to the originator client
-    if (manager.sendtoWait(data, sizeof(data), from) != RH_ROUTER_ERROR_NONE)
-    Serial.println("sendtoWait failed");
+    Serial.println("************Buffer data************");
+    Serial.printf("functionTypeBuffer : %s\n", functionTypeBuffer);
+    Serial.printf("IPBuffer : %s\n", IPBuffer);
+    Serial.printf("dataBuffer : %s\n", dataBuffer);
+    Serial.println("************************************");
+    Serial.println();
   }
+  
+  int functionType = parseFunctionType();
+  parseIPAddress();
+  IPAddress modbusServer(parsedIP[0], parsedIP[1], parsedIP[2], parsedIP[3]);
+  
+
+  if(DEBUG){
+    Serial.println("************Parsed Data************");
+    Serial.printf("Function type : %d\n", functionType);
+    Serial.print("IP Address : ");
+    Serial.println(modbusServer);
+    Serial.printf("dataBuffer : %s\n", dataBuffer);
+    Serial.println("************************************");
+    Serial.println();
+  }
+  
+  
+  
+
+  Serial.println("Loop complete");
+  delay(500000);
+}
+
+int parseIncomingData(){
+  //
+  ptr = strtok((char *)buf, "#");
+  strcpy(functionTypeBuffer, ptr);
+  ptr = strtok(NULL, "#");
+  strcpy(IPBuffer, ptr);
+  ptr = strtok(NULL, "#");
+  strcpy(dataBuffer, ptr);
+}
+
+int parseFunctionType(){
+  int functionType = 0;
+
+  ptr = strtok((char *)functionTypeBuffer, "#");
+
+  functionType = atoi(ptr);
+
+  return functionType;
+}
+
+int parseIPAddress(){
+  ptr = strtok((char *)IPBuffer, ",");
+  for (size_t i = 0; i < 4; i++)
+  {
+    parsedIP[i] = atoi(ptr);
+    ptr = strtok(NULL, ",");
+  }
+  
+  return 0;
 }
 
 
-int checkMessageType(uint8_t firstByte){
-  switch (firstByte)
-  {
-  case 1:
-    return readCoilStatus();
-  case 3:
-    return readHoldingRegisters();
-  case 4:
-    return readInternalRegisters();
-  case 5:
-    return writeSingleCoil();
-  case 6:
-    return writeSingleRegister();
-  case 15:
-    return writeMultipleCoils();
-  case 16:
-    return writeMultipleRegisters();
-  default:
-    return returnBadRequest();
-  }
-  return 1;
-}
 
-int readCoilStatus()
+int readCoilStatus(IPAddress modbusServer)
 {
-  // Incoming message should look like this: "1#{coilAddress}"
-  int coilAddress = 0;
+  // Incoming message should look like this: "1{IP1}{IP2}{IP3}{IP4}#{coilAddress}"
+  // Serial.println("3");
+  // Serial.print("Buffer : ");
+  // Serial.println((char *) buf);
+  // char *ptr = strtok((char *)buf, "#");
+
+  // Serial.print("pointer is at : ");
+  // Serial.println((char *)ptr);
+
+  // int coilAddress = (int)ptr;
+  // bool coilData = 0;
+
+  // if(mb.isConnected(modbusServer))
+  // {
+  //   mb.readCoil(modbusServer, coilAddress, &coilData);
+  // }
+  // else
+  // {
+  //   mb.connect(modbusServer);
+  // }
+  // mb.task();
+  // Serial.println(coilData);
 
   return 0;
 }
 
-int readHoldingRegisters()
+int readHoldingRegisters(IPAddress modbusServer)
 {
   // Incoming message should look like this: "3#{holdingRegisterAddress}"
   int holdingRegisterAddress = 0;
   return 0;
 }
 
-int readInternalRegisters()
+int readInternalRegisters(IPAddress modbusServer)
 {
   // Incoming message should look like this: "4#{internalRegisterAddress}"
   int internalRegisterAddress = 0;
   return 0;
 }
 
-int writeSingleCoil()
+int writeSingleCoil(IPAddress modbusServer)
 {
   // Incoming message should look like this: "5#{coilAddress}#{coilData}"
   int coilAddress = 0;
@@ -195,7 +280,7 @@ int writeSingleCoil()
   return 0;
 }
 
-int writeSingleRegister()
+int writeSingleRegister(IPAddress modbusServer)
 {
   // Incoming message should look like this: "6#{registerAddress}#{registerData}"
   int registerAddress = 0;
@@ -203,7 +288,7 @@ int writeSingleRegister()
   return 0;
 }
 
-int writeMultipleCoils()
+int writeMultipleCoils(IPAddress modbusServer)
 {
   // Incoming message should look like this: "15#{startAddress}#{numberOfCoils}#{coilData1},{coilData2}...,{coilDataN}"
   int startAddress = 0;
@@ -212,7 +297,7 @@ int writeMultipleCoils()
   return 0;
 }
 
-int writeMultipleRegisters()
+int writeMultipleRegisters(IPAddress modbusServer)
 {
   // Incoming message should look like this: "16#{startAddress}#{numberOfRegisters}#{registerData1},{registerData2}...,{registerDataN}"
   int startAddress = 0;
@@ -223,8 +308,14 @@ int writeMultipleRegisters()
 
 int returnBadRequest()
 {
-  
+
 
   return 0;
 }
 
+int resetBuffers(){
+  memset(parsedIP, '\0', sizeOfParsedIP);
+  memset(dataBuffer, '\0', sizeOfDataBuffer);
+  memset(IPBuffer, '\0', sizeOfIPBuffer);
+  memset(functionTypeBuffer, '\0', sizeOfFunctionTypeBuffer);
+}
