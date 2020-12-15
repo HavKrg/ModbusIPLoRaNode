@@ -32,7 +32,7 @@ valueN = the value you want to write to startAddress+N
 
 "#15#10,0,0,180#100#4,0,0,0,0\n"
 
-## Example 4 write 5 holding registers starting att address 100:
+## Example 4 write 5 holding registers starting at address 100:
 
 "#16#10,0,0,180#100#5,1000,1001,1002,1003,1004\n"
 
