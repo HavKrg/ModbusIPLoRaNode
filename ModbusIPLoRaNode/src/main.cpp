@@ -34,6 +34,9 @@ int writeCoils(IPAddress modbusServer, char *dataBuffer);
 int writeHoldingRegisters(IPAddress modbusServer, char *dataBuffer);
 
 int returnBadRequest();
+void localTesting();
+void printModbusData(int startAddress, int numberOfAddresses, uint16_t * modbusData);
+void printModbusData(int startAddress, int numberOfAddresses, bool * modbusData);
 
 /*************************************
             LORA PINS
@@ -129,19 +132,18 @@ void setup()
 }
 
 // Reply message variable
-uint8_t data[RH_MESH_MAX_MESSAGE_LEN] = {'\0'};
+char data[RH_MESH_MAX_MESSAGE_LEN] = {'\0'};
 // Buffer for incoming message
-uint8_t buf[RH_MESH_MAX_MESSAGE_LEN] = {'\0'};
+// uint8_t buf[RH_MESH_MAX_MESSAGE_LEN] = {'\0'};
 
 // #{functionNumber}#{IPAddress}#{startAddress}#{numberOfAddresses},{value1},{value2}...{valueN}\n
-// uint8_t buf[] = "#1#10,0,0,180#0#1,0\n"; // READ SINGLE COIL TEST
-// uint8_t buf[] = "#3#10,0,0,180#0#1,0\n"; // READ SINGLE HOLDING REGISTER TEST
-// uint8_t buf[] = "#4#10,0,0,180#0#1,0\n"; // READ SINGLE INTERNAL REGISTER TEST
+// uint8_t buf[] = "#1#10,0,0,180#0#4,0\n"; // READ COILS TEST
+// uint8_t buf[] = "#3#10,0,0,180#0#5,0\n"; // READ HOLDING REGISTERS TEST
+// uint8_t buf[] = "#4#10,0,0,180#0#5,0\n"; // READ INTERNAL REGISTERS TEST
 // uint8_t buf[] = "#5#10,0,0,180#1#1,0\n"; // WRITE SINGLE COIL TEST
 // uint8_t buf[] = "#6#10,0,0,180#0#1,9999\n"; // WRITE SINGLE HOLDING REGISTER TEST
 // uint8_t buf[] = "#15#10,0,0,180#0#4,0,0,0,0\n"; // WRITE MULTIPLE COILS TEST
-// uint8_t buf[] = "#16#10,0,0,180#0#5,100,101,102,103, 104\n"; // WRITE MULTIPLE  HOLDING REGISTERS TEST
-
+// uint8_t buf[] = "#16#10,0,0,180#0#5,1000,1001,1002,1003, 1004\n"; // WRITE MULTIPLE  HOLDING REGISTERS TEST
 
 char IPBuffer[sizeOfIPBuffer];
 char functionTypeBuffer[sizeOfFunctionTypeBuffer];
@@ -165,58 +167,60 @@ void loop()
     Serial.print("0x");
     Serial.print(from, HEX);
     Serial.print(": ");
-    Serial.println((char*)buf);
+    Serial.println((char *)buf);
 
     if (from == 100 && buf[0] == '#')
     {
       parseIncomingData();
       resetBuffers();
 
+      if (DEBUG)
+      {
+        Serial.println("************Buffer data************");
+        Serial.printf("functionTypeBuffer : %s\n", functionTypeBuffer);
+        Serial.printf("IPBuffer : %s\n", IPBuffer);
+        Serial.printf("dataBuffer : %s\n", dataBuffer);
+        Serial.println("************************************");
+        Serial.println();
+      }
 
-  if (DEBUG)
-  {
-    Serial.println("************Buffer data************");
-    Serial.printf("functionTypeBuffer : %s\n", functionTypeBuffer);
-    Serial.printf("IPBuffer : %s\n", IPBuffer);
-    Serial.printf("dataBuffer : %s\n", dataBuffer);
-    Serial.println("************************************");
-    Serial.println();
-  }
+      int functionType = parseFunctionType();
+      parseIPAddress();
+      IPAddress modbusServer(parsedIP[0], parsedIP[1], parsedIP[2], parsedIP[3]);
 
-  int functionType = parseFunctionType();
-  parseIPAddress();
-  IPAddress modbusServer(parsedIP[0], parsedIP[1], parsedIP[2], parsedIP[3]);
+      if (DEBUG)
+      {
+        Serial.println("************Parsed Data************");
+        Serial.printf("Function type : %d\n", functionType);
+        Serial.print("IP Address : ");
+        Serial.println(modbusServer);
+        Serial.printf("dataBuffer : %s\n", dataBuffer);
+        Serial.println("************************************");
+        Serial.println();
+      }
 
-  if (DEBUG)
-  {
-    Serial.println("************Parsed Data************");
-    Serial.printf("Function type : %d\n", functionType);
-    Serial.print("IP Address : ");
-    Serial.println(modbusServer);
-    Serial.printf("dataBuffer : %s\n", dataBuffer);
-    Serial.println("************************************");
-    Serial.println();
-  }
+      processRequest(functionType, modbusServer, dataBuffer);
 
-  processRequest(functionType, modbusServer, dataBuffer);
+      Serial.println("************Parsed Data************");
+      Serial.printf("Reply data : %s\n", data);
+      Serial.println("************************************");
+      Serial.println();
     }
     else
     {
       Serial.printf("Received bad request: %s", buf);
     }
-    
-    
-
 
     // Send a reply back to the originator client
-    if (manager.sendtoWait(data, sizeof(data), from) != RH_ROUTER_ERROR_NONE)
-    Serial.println("sendtoWait failed");
+    if (manager.sendtoWait((uint8_t *)data, sizeof(data), from) != RH_ROUTER_ERROR_NONE)
+      Serial.println("sendtoWait failed");
   }
-  
 
-  
+  localTesting(); // UNCOMMENT THIS TO TEST WITH LOCAL BUFFERS
 
-  
+  delay(30000);
+
+  resetBuffers();
 }
 
 int parseIncomingData()
@@ -284,43 +288,44 @@ int readCoils(IPAddress modbusServer, char *dataBuffer)
   // Incoming message should look like this: "{startAddress}#{numberOfCoils}"
   ptr = strtok(dataBuffer, "#");
   int startAddress = atoi(ptr);
-  // Serial.println(startAddress);
   ptr = strtok(NULL, "#");
-  int numberOfCoils = atoi(ptr);
-  // Serial.println(numberOfCoils);
+  int numberOfAddresses = atoi(ptr);
 
-   bool coilData[numberOfCoils];
+  bool modbusData[numberOfAddresses];
 
   if (mb.isConnected(modbusServer))
   {
     Serial.println("Reading data from modbus server");
-    for (size_t i = 0; i < numberOfCoils; i++)
+    for (size_t i = 0; i < numberOfAddresses; i++)
     {
-      mb.readCoil(modbusServer, startAddress+i, &coilData[i]);
+      mb.readCoil(modbusServer, startAddress + i, &modbusData[i]);
       delay(50);
       mb.task();
     }
-    
   }
   else
   {
     Serial.println("Connecting to modbus server");
     mb.connect(modbusServer);
-    for (size_t i = 0; i < numberOfCoils; i++)
+    for (size_t i = 0; i < numberOfAddresses; i++)
     {
-      mb.readCoil(modbusServer, startAddress+i, &coilData[i]);
+      mb.readCoil(modbusServer, startAddress + i, &modbusData[i]);
       delay(50);
       mb.task();
     }
   }
   delay(50);
   mb.task();
-  Serial.printf("Got request to read %d coils starting at address %d \nI found these values : ", numberOfCoils, startAddress);
-  for (size_t i = 0; i < numberOfCoils; i++)
+
+  printModbusData(startAddress, numberOfAddresses, modbusData);
+
+  Serial.println();
+
+  char *target = data;
+  for (size_t i = 0; i < numberOfAddresses; i++)
   {
-    Serial.printf("%d ", coilData[i]);
+    target += sprintf(target, "%d,", modbusData[i]);
   }
-  
 
   return 0;
 }
@@ -332,19 +337,17 @@ int readHoldingRegisters(IPAddress modbusServer, char *dataBuffer)
   int startAddress = atoi(ptr);
   ptr = strtok(NULL, "#");
   int numberOfAddresses = atoi(ptr);
-  uint16_t registerData[numberOfAddresses];
-
+  uint16_t modbusData[numberOfAddresses];
 
   if (mb.isConnected(modbusServer))
   {
     Serial.println("Reading data from modbus server");
     for (size_t i = 0; i < numberOfAddresses; i++)
     {
-      mb.readHreg(modbusServer, startAddress+i, &registerData[i]);
+      mb.readHreg(modbusServer, startAddress + i, &modbusData[i]);
       delay(50);
       mb.task();
     }
-    
   }
   else
   {
@@ -352,19 +355,21 @@ int readHoldingRegisters(IPAddress modbusServer, char *dataBuffer)
     mb.connect(modbusServer);
     for (size_t i = 0; i < numberOfAddresses; i++)
     {
-      mb.readHreg(modbusServer, startAddress+i, &registerData[i]);
+      mb.readHreg(modbusServer, startAddress + i, &modbusData[i]);
       delay(50);
       mb.task();
     }
   }
   delay(50);
   mb.task();
-  Serial.printf("Got request to read %d holding registers starting at address %d \nI found these values : ", numberOfAddresses, startAddress);
+
+  printModbusData(startAddress, numberOfAddresses, modbusData);
+
+  char *target = data;
   for (size_t i = 0; i < numberOfAddresses; i++)
   {
-    Serial.printf("%d ", registerData[i]);
+    target += sprintf(target, "%d,", modbusData[i]);
   }
-  
 
   return 0;
 }
@@ -376,18 +381,17 @@ int readInternalRegisters(IPAddress modbusServer, char *dataBuffer)
   int startAddress = atoi(ptr);
   ptr = strtok(NULL, "#");
   int numberOfAddresses = atoi(ptr);
-  uint16_t registerData[numberOfAddresses];
+  uint16_t modbusData[numberOfAddresses];
 
-if (mb.isConnected(modbusServer))
+  if (mb.isConnected(modbusServer))
   {
     Serial.println("Reading data from modbus server");
     for (size_t i = 0; i < numberOfAddresses; i++)
     {
-      mb.readIreg(modbusServer, startAddress+i, &registerData[i]);
+      mb.readIreg(modbusServer, startAddress + i, &modbusData[i]);
       delay(50);
       mb.task();
     }
-    
   }
   else
   {
@@ -395,21 +399,15 @@ if (mb.isConnected(modbusServer))
     mb.connect(modbusServer);
     for (size_t i = 0; i < numberOfAddresses; i++)
     {
-      mb.readIreg(modbusServer, startAddress+i, &registerData[i]);
+      mb.readIreg(modbusServer, startAddress + i, &modbusData[i]);
       delay(50);
       mb.task();
     }
   }
   delay(50);
   mb.task();
-  Serial.printf("Got request to read %d input registers starting at address %d \nI found these values : ", numberOfAddresses, startAddress);
-  for (size_t i = 0; i < numberOfAddresses; i++)
-  {
-    Serial.printf("%d ", registerData[i]);
-  }
-  
 
-
+  printModbusData(startAddress, numberOfAddresses, modbusData);
   return 0;
 }
 
@@ -419,25 +417,23 @@ int writeCoils(IPAddress modbusServer, char *dataBuffer)
   int startAddress = atoi(ptr);
   ptr = strtok(NULL, ",");
   int numberOfCoils = atoi(ptr);
-  bool coilData[numberOfCoils];
+  bool modbusData[numberOfCoils];
 
   for (size_t i = 0; i < numberOfCoils; i++)
   {
     ptr = strtok(NULL, ",");
-    coilData[i] = atoi(ptr)!=0;
+    modbusData[i] = atoi(ptr) != 0;
   }
-  
 
   if (mb.isConnected(modbusServer))
   {
     Serial.println("Reading data from modbus server");
     for (size_t i = 0; i < numberOfCoils; i++)
     {
-      mb.writeCoil(modbusServer, startAddress+i, coilData[i]);
+      mb.writeCoil(modbusServer, startAddress + i, modbusData[i]);
       delay(50);
       mb.task();
     }
-    
   }
   else
   {
@@ -445,14 +441,16 @@ int writeCoils(IPAddress modbusServer, char *dataBuffer)
     mb.connect(modbusServer);
     for (size_t i = 0; i < numberOfCoils; i++)
     {
-      mb.writeCoil(modbusServer, startAddress+i, coilData[i]);
+      mb.writeCoil(modbusServer, startAddress + i, modbusData[i]);
       delay(50);
       mb.task();
     }
   }
   delay(50);
   mb.task();
-  
+
+  sprintf(data, "Successfully wrote data");
+
 }
 
 int writeHoldingRegisters(IPAddress modbusServer, char *dataBuffer)
@@ -461,24 +459,23 @@ int writeHoldingRegisters(IPAddress modbusServer, char *dataBuffer)
   int startAddress = atoi(ptr);
   ptr = strtok(NULL, ",");
   int numberOfRegisters = atoi(ptr);
-  uint16_t registerData[numberOfRegisters];
+  uint16_t modbusData[numberOfRegisters];
 
   for (size_t i = 0; i < numberOfRegisters; i++)
   {
     ptr = strtok(NULL, ",");
-    registerData[i] = atoi(ptr);
+    modbusData[i] = atoi(ptr);
   }
-  
+
   if (mb.isConnected(modbusServer))
   {
     Serial.println("Reading data from modbus server");
     for (size_t i = 0; i < numberOfRegisters; i++)
     {
-      mb.writeHreg(modbusServer, startAddress+i, registerData[i]);
+      mb.writeHreg(modbusServer, startAddress + i, modbusData[i]);
       delay(50);
       mb.task();
     }
-    
   }
   else
   {
@@ -486,7 +483,7 @@ int writeHoldingRegisters(IPAddress modbusServer, char *dataBuffer)
     mb.connect(modbusServer);
     for (size_t i = 0; i < numberOfRegisters; i++)
     {
-      mb.writeHreg(modbusServer, startAddress+i, registerData[i]);
+      mb.writeHreg(modbusServer, startAddress + i, modbusData[i]);
       delay(50);
       mb.task();
     }
@@ -494,6 +491,7 @@ int writeHoldingRegisters(IPAddress modbusServer, char *dataBuffer)
   delay(50);
   mb.task();
 
+  sprintf(data, "Successfully wrote data");
 }
 
 int returnBadRequest()
@@ -509,4 +507,63 @@ int resetBuffers()
   memset(dataBuffer, '\0', sizeOfDataBuffer);
   memset(IPBuffer, '\0', sizeOfIPBuffer);
   memset(functionTypeBuffer, '\0', sizeOfFunctionTypeBuffer);
+}
+
+void localTesting()
+{
+  parseIncomingData();
+  
+  if (DEBUG)
+  {
+    Serial.println("************Buffer data************");
+    Serial.printf("functionTypeBuffer : %s\n", functionTypeBuffer);
+    Serial.printf("IPBuffer : %s\n", IPBuffer);
+    Serial.printf("dataBuffer : %s\n", dataBuffer);
+    Serial.println("***********************************");
+    Serial.println();
+  }
+
+  int functionType = parseFunctionType();
+  parseIPAddress();
+  IPAddress modbusServer(parsedIP[0], parsedIP[1], parsedIP[2], parsedIP[3]);
+
+  if (DEBUG)
+  {
+    Serial.println("************Parsed Data************");
+    Serial.printf("Function type : %d\n", functionType);
+    Serial.print("IP Address : ");
+    Serial.println(modbusServer);
+    Serial.printf("dataBuffer : %s\n", dataBuffer);
+    Serial.println("***********************************");
+    Serial.println();
+  }
+
+  processRequest(functionType, modbusServer, dataBuffer);
+  
+  Serial.println();
+  Serial.println("************Reply Data************");
+  Serial.printf("Reply data : %s\n", data);
+  Serial.println("***********************************");
+  Serial.println();
+}
+
+
+void printModbusData(int startAddress, int numberOfAddresses, uint16_t * modbusData)
+{
+  Serial.printf("Got request to read %d values starting at address %d \nI found these values : ", numberOfAddresses, startAddress);
+  for (size_t i = 0; i < numberOfAddresses; i++)
+  {
+    Serial.printf("%d ", modbusData[i]);
+  }
+  Serial.println();
+}
+
+void printModbusData(int startAddress, int numberOfAddresses, bool * modbusData)
+{
+  Serial.printf("Got request to read %d values starting at address %d \nI found these values : ", numberOfAddresses, startAddress);
+  for (size_t i = 0; i < numberOfAddresses; i++)
+  {
+    Serial.printf("%d ", modbusData[i]);
+  }
+  Serial.println();
 }
