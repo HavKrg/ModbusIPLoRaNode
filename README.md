@@ -10,11 +10,17 @@ The "request message" needs to follow this format:
 
 Where:
 
+
 functionNumber = modbus function 1, 3, 4, 5, 6, 15 or 16
+
 IPAddress = IP address of the modbus server
+
 startAddress = modbus address of the first value you want to read/write
+
 numberOfAddresses = the number of values you want to read/write
+
 value1 = the value you want to write to the startAddress
+
 value2 = the value you want to write to startAddress+1
 ...
 valueN = the value you want to write to startAddress+N
